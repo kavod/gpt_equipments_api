@@ -1,6 +1,8 @@
-import jwt
 import datetime
-from flask import Flask, request
+
+import jwt
+from flask import Flask, request, jsonify
+from functools import wraps
 
 app = Flask(__name__)
 
@@ -16,16 +18,19 @@ def login():
         return {"error": "Invalid username or password"}, 401
 
     # Generate JWT token
-    token = jwt.encode({"username": username, "exp": datetime.datetime.utcnow() + datetime.timedelta(minutes=30)}, secret_key)
-    return {"token": token.decode("utf-8")}
+    token = jwt.encode({"username": username, "exp": datetime.datetime.now(datetime.UTC) + datetime.timedelta(minutes=30)}, secret_key,
+        algorithm="HS256")
+    return {"token": token}
 
 def requires_auth(f):
+    @wraps(f)
     def decorated(*args, **kwargs):
         token = request.headers.get("Authorization", None)
+        print(token)
         if not token:
             return {"error": "Token is missing"}, 401
         try:
-            jwt.decode(token, secret_key)
+            jwt.decode(token, secret_key, algorithms=["HS256"])
         except jwt.ExpiredSignatureError:
             return {"error": "Token has expired"}, 401
         except jwt.DecodeError:
@@ -68,3 +73,6 @@ def add_equipment():
 
     # Return a success message
     return jsonify({"message": "Equipment added successfully."})
+
+if __name__ == "__main__":
+    app.run(port=8080)
