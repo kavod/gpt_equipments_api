@@ -1,12 +1,26 @@
 import datetime
-
 import jwt
 from flask import Flask, request, jsonify
 from functools import wraps
+from flask_sqlalchemy import SQLAlchemy
 
 app = Flask(__name__)
 
 secret_key = "mysecretkey"
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///equipments.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+db = SQLAlchemy(app)
+
+class Equipment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    date_achat = db.Column(db.String(100), nullable=False)
+    prix_achat = db.Column(db.Float, nullable=False)
+
+# Initialiser la base de données
+with app.app_context():
+    db.create_all()
 
 @app.route("/login", methods=["POST"])
 def login():
@@ -18,15 +32,17 @@ def login():
         return {"error": "Invalid username or password"}, 401
 
     # Generate JWT token
-    token = jwt.encode({"username": username, "exp": datetime.datetime.now(datetime.UTC) + datetime.timedelta(minutes=30)}, secret_key,
-        algorithm="HS256")
+    token = jwt.encode(
+        {"username": username, "exp": datetime.datetime.utcnow() + datetime.timedelta(minutes=30)},
+        secret_key,
+        algorithm="HS256"
+    )
     return {"token": token}
 
 def requires_auth(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         token = request.headers.get("Authorization", None)
-        print(token)
         if not token:
             return {"error": "Token is missing"}, 401
         try:
@@ -41,37 +57,17 @@ def requires_auth(f):
 @app.route("/equipments", methods=["GET"])
 @requires_auth
 def list_equipments():
-    # Get all the equipment data from the database
-    cursor = db.cursor()
-    query = "SELECT * FROM mt_equipments"
-    cursor.execute(query)
-    result = cursor.fetchall()
-
-    # Format the equipment data as a list of dictionaries
-    equipments = []
-    for equipment in result:
-        equipments.append({"id": equipment[0], "name": equipment[1], "date_achat": equipment[2], "prix_achat": equipment[3]})
-
-    # Return the equipment data as a JSON response
-    return jsonify({"equipments": equipments})
+    equipments = Equipment.query.all()
+    equipments_list = [{"id": eq.id, "name": eq.name, "date_achat": eq.date_achat, "prix_achat": eq.prix_achat} for eq in equipments]
+    return jsonify({"equipments": equipments_list})
 
 @app.route("/equipments", methods=["POST"])
 @requires_auth
 def add_equipment():
-    # Get the equipment data from the request
     data = request.get_json()
-    name = data["name"]
-    date_achat = data["date_achat"]
-    prix_achat = data["prix_achat"]
-
-    # Insert the equipment data into the database
-    cursor = db.cursor()
-    query = "INSERT INTO mt_equipments (name, date_achat, prix_achat) VALUES (%s, %s, %s)"
-    values = (name, date_achat, prix_achat)
-    cursor.execute(query, values)
-    db.commit()
-
-    # Return a success message
+    new_equipment = Equipment(name=data["name"], date_achat=data["date_achat"], prix_achat=data["prix_achat"])
+    db.session.add(new_equipment)
+    db.session.commit()
     return jsonify({"message": "Equipment added successfully."})
 
 if __name__ == "__main__":
