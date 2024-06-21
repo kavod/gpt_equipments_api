@@ -1,0 +1,4 @@
+PyJWT
+Flask
+flask_sqlalchemy
+alembic
